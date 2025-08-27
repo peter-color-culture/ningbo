@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useParams } from 'next/navigation';
 
+interface ParsedUrlField {
+  text: string;
+  url: string;
+}
+
 interface RuptOrderItem {
   row_number: number;
   houstonCCOrder: string;
@@ -19,6 +24,11 @@ interface RuptOrderItem {
   artwork1Url: string;
   mockUp2Url: string;
   artwork2Url: string;
+  // Parsed fields for display
+  mockUp1Parsed: ParsedUrlField | null;
+  artwork1Parsed: ParsedUrlField | null;
+  mockUp2Parsed: ParsedUrlField | null;
+  artwork2Parsed: ParsedUrlField | null;
   quantity: number;
   cost: number;
   imprints: number;
@@ -61,6 +71,34 @@ function RuptOrderContent() {
     setExpandedItems(newExpandedItems);
   };
 
+  // Function to parse text and URL from field values
+  const parseUrlField = (fieldValue: string): ParsedUrlField | null => {
+    if (!fieldValue || fieldValue.trim() === '') return null;
+    
+    // Check if it contains a URL
+    const urlRegex = /https?:\/\/[^\s]+/;
+    const urlMatch = fieldValue.match(urlRegex);
+    
+    if (urlMatch) {
+      const url = urlMatch[0];
+      // Remove the URL from the text and clean up any extra punctuation
+      let text = fieldValue.replace(url, '').trim();
+      // Clean up common separators like colons, dashes, etc.
+      text = text.replace(/^[:-\s]+|[:-\s]+$/g, '').trim();
+      
+      return {
+        text: text || 'Link',
+        url: url
+      };
+    }
+    
+    // If no URL found, treat the entire value as text
+    return {
+      text: fieldValue.trim(),
+      url: ''
+    };
+  };
+
   // Transform n8n response into structured order format
   const transformRuptOrder = (data: Array<Record<string, unknown>>): RuptOrder | null => {
     if (!data || data.length === 0) return null;
@@ -76,32 +114,44 @@ function RuptOrderContent() {
       dateOrderReceived: String(firstItem['Date Order\nReceived'] || ''),
       shipTo: String(firstItem['Ship To:'] || ''),
       orderTotal: Number(firstItem['Order Total\n(US$)'] || 0),
-      items: data.map(item => ({
-        row_number: Number(item.row_number || 0),
-        houstonCCOrder: String(item['Houston CC \nOrder #'] || ''),
-        ruptOrder: String(item['Rupt \nOrder #'] || ''),
-        company: String(item['Company'] || ''),
-        customerName: String(item['Customer \nName'] || ''),
-        customerAddress: String(item['Customer \nAddress'] || ''),
-        dateOrderReceived: String(item['Date Order\nReceived'] || ''),
-        shipTo: String(item['Ship To:'] || ''),
-        orderTotal: Number(item['Order Total\n(US$)'] || 0),
-        sku: String(item['SKU'] || ''),
-        size: String(item['Size'] || ''),
-        mockUp1Url: String(item['Mock Up 1\n (URL)'] || ''),
-        artwork1Url: String(item['Artwork 1\n(URL)'] || ''),
-        mockUp2Url: String(item['Mock Up 2\n (URL)'] || ''),
-        artwork2Url: String(item['Artwork 2\n(URL)'] || ''),
-        quantity: Number(item['Quantity'] || 0),
-        cost: Number(item['Cost'] || 0),
-        imprints: Number(item['Imprints \n($2)'] || 0),
-        neckLabel: String(item['Neck Label \n(75¢)'] || ''),
-        lineItemTotal: Number(item['Line Item Total\n(US$)'] || 0),
-        status: String(item['Status'] || ''),
-        notes: String(item['Notes'] || ''),
-        estimatedShippingDate: String(item['Estimated \nShipping Date'] || ''),
-        tracking: String(item['Tracking #'] || '')
-      }))
+      items: data.map(item => {
+        const mockUp1Url = String(item['Mock Up 1\n (URL)'] || '');
+        const artwork1Url = String(item['Artwork 1\n(URL)'] || '');
+        const mockUp2Url = String(item['Mock Up 2\n (URL)'] || '');
+        const artwork2Url = String(item['Artwork 2\n(URL)'] || '');
+        
+        return {
+          row_number: Number(item.row_number || 0),
+          houstonCCOrder: String(item['Houston CC \nOrder #'] || ''),
+          ruptOrder: String(item['Rupt \nOrder #'] || ''),
+          company: String(item['Company'] || ''),
+          customerName: String(item['Customer \nName'] || ''),
+          customerAddress: String(item['Customer \nAddress'] || ''),
+          dateOrderReceived: String(item['Date Order\nReceived'] || ''),
+          shipTo: String(item['Ship To:'] || ''),
+          orderTotal: Number(item['Order Total\n(US$)'] || 0),
+          sku: String(item['SKU'] || ''),
+          size: String(item['Size'] || ''),
+          mockUp1Url,
+          artwork1Url,
+          mockUp2Url,
+          artwork2Url,
+          // Parse the fields for display
+          mockUp1Parsed: parseUrlField(mockUp1Url),
+          artwork1Parsed: parseUrlField(artwork1Url),
+          mockUp2Parsed: parseUrlField(mockUp2Url),
+          artwork2Parsed: parseUrlField(artwork2Url),
+          quantity: Number(item['Quantity'] || 0),
+          cost: Number(item['Cost'] || 0),
+          imprints: Number(item['Imprints \n($2)'] || 0),
+          neckLabel: String(item['Neck Label \n(75¢)'] || ''),
+          lineItemTotal: Number(item['Line Item Total\n(US$)'] || 0),
+          status: String(item['Status'] || ''),
+          notes: String(item['Notes'] || ''),
+          estimatedShippingDate: String(item['Estimated \nShipping Date'] || ''),
+          tracking: String(item['Tracking'] || ''),
+        };
+      })
     };
   };
 
@@ -242,7 +292,7 @@ function RuptOrderContent() {
                 </thead>
                 <tbody className="divide-y divide-blue-200">
                   {ruptOrder.items.map((item, index) => {
-                    const hasImages = item.mockUp1Url || item.mockUp2Url || item.artwork1Url || item.artwork2Url;
+                    const hasImages = item.mockUp1Parsed || item.mockUp2Parsed || item.artwork1Parsed || item.artwork2Parsed;
                     
                     return [
                       // Main data row
@@ -275,10 +325,10 @@ function RuptOrderContent() {
                               <span>View Mock Ups & Artwork</span>
                               <span className="text-xs text-gray-500">
                                 ({[
-                                  item.mockUp1Url && 'Mock Up 1',
-                                  item.mockUp2Url && 'Mock Up 2',
-                                  item.artwork1Url && 'Artwork 1',
-                                  item.artwork2Url && 'Artwork 2'
+                                                      item.mockUp1Parsed && 'Mock Up 1',
+                    item.mockUp2Parsed && 'Mock Up 2',
+                    item.artwork1Parsed && 'Artwork 1',
+                    item.artwork2Parsed && 'Artwork 2'
                                 ].filter(Boolean).length} items)
                               </span>
                             </button>
@@ -295,32 +345,42 @@ function RuptOrderContent() {
                               <div>
                                 <h4 className="text-sm font-medium text-gray-700 mb-3">Mock Ups</h4>
                                 <div className="space-y-3">
-                                  {item.mockUp1Url && (
+                                  {item.mockUp1Parsed && (
                                     <div className="flex items-center space-x-3">
                                       <span className="text-xs text-gray-500 w-16">Mock Up 1:</span>
-                                      <img 
-                                        src={item.mockUp1Url} 
-                                        alt="Mock Up 1" 
-                                        className="w-24 h-24 object-cover rounded border cursor-pointer hover:scale-105 transition-transform"
-                                        onClick={() => window.open(item.mockUp1Url, '_blank')}
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
+                                                                             {item.mockUp1Parsed.url ? (
+                                         <a 
+                                           href={item.mockUp1Parsed.url} 
+                                           target="_blank" 
+                                           rel="noopener noreferrer"
+                                           className="text-blue-600 hover:underline truncate max-w-[150px]"
+                                         >
+                                           {item.mockUp1Parsed.text}
+                                         </a>
+                                       ) : (
+                                         <span className="text-gray-700 truncate max-w-[150px]">
+                                           {item.mockUp1Parsed.text}
+                                         </span>
+                                       )}
                                     </div>
                                   )}
-                                  {item.mockUp2Url && (
+                                  {item.mockUp2Parsed && (
                                     <div className="flex items-center space-x-3">
                                       <span className="text-xs text-gray-500 w-16">Mock Up 2:</span>
-                                      <img 
-                                        src={item.mockUp2Url} 
-                                        alt="Mock Up 2" 
-                                        className="w-24 h-24 object-cover rounded border cursor-pointer hover:scale-105 transition-transform"
-                                        onClick={() => window.open(item.mockUp2Url, '_blank')}
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
+                                                                             {item.mockUp2Parsed.url ? (
+                                         <a 
+                                           href={item.mockUp2Parsed.url} 
+                                           target="_blank" 
+                                           rel="noopener noreferrer"
+                                           className="text-blue-600 hover:underline truncate max-w-[150px]"
+                                         >
+                                           {item.mockUp2Parsed.text}
+                                         </a>
+                                       ) : (
+                                         <span className="text-gray-700 truncate max-w-[150px]">
+                                           {item.mockUp2Parsed.text}
+                                         </span>
+                                       )}
                                     </div>
                                   )}
                                 </div>
@@ -330,32 +390,42 @@ function RuptOrderContent() {
                               <div>
                                 <h4 className="text-sm font-medium text-gray-700 mb-3">Artwork</h4>
                                 <div className="space-y-3">
-                                  {item.artwork1Url && (
+                                  {item.artwork1Parsed && (
                                     <div className="flex items-center space-x-3">
                                       <span className="text-xs text-gray-500 w-16">Artwork 1:</span>
-                                      <img 
-                                        src={item.artwork1Url} 
-                                        alt="Artwork 1" 
-                                        className="w-24 h-24 object-cover rounded border cursor-pointer hover:scale-105 transition-transform"
-                                        onClick={() => window.open(item.artwork1Url, '_blank')}
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
+                                      {item.artwork1Parsed.url ? (
+                                        <a 
+                                          href={item.artwork1Parsed.url} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline truncate max-w-[150px]"
+                                        >
+                                          {item.artwork1Parsed.text}
+                                        </a>
+                                      ) : (
+                                        <span className="text-gray-700 truncate max-w-[150px]">
+                                          {item.artwork1Parsed.text}
+                                        </span>
+                                      )}
                                     </div>
                                   )}
-                                  {item.artwork2Url && (
+                                  {item.artwork2Parsed && (
                                     <div className="flex items-center space-x-3">
                                       <span className="text-xs text-gray-500 w-16">Artwork 2:</span>
-                                      <img 
-                                        src={item.artwork2Url} 
-                                        alt="Artwork 2" 
-                                        className="w-24 h-24 object-cover rounded border cursor-pointer hover:scale-105 transition-transform"
-                                        onClick={() => window.open(item.artwork2Url, '_blank')}
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
+                                      {item.artwork2Parsed.url ? (
+                                        <a 
+                                          href={item.artwork2Parsed.url} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline truncate max-w-[150px]"
+                                        >
+                                          {item.artwork2Parsed.text}
+                                        </a>
+                                      ) : (
+                                        <span className="text-gray-700 truncate max-w-[150px]">
+                                          {item.artwork2Parsed.text}
+                                        </span>
+                                      )}
                                     </div>
                                   )}
                                 </div>
